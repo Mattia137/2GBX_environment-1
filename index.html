@@ -9,86 +9,101 @@
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Fragment Mono', monospace; }
         #renderCanvas { width: 100%; height: 100%; position: absolute; z-index: 1; outline: none; touch-action: none; }
         
-        /* Clean HUD - Scanlines and SVG overlays removed */
-        #interface { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            z-index: 10; pointer-events: none; color: #ffffff; 
-            font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase;
+        /* Solid Color Overlay - Green Screen Blend */
+        #color-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #191f1d; 
+            mix-blend-mode: screen;
+            pointer-events: none;
+            z-index: 5;
         }
-        
+
+        #interface { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; color: #ffffff; font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase; }
         .hud-cluster { position: absolute; display: flex; flex-direction: column; padding: 30px; }
         .top-left { top: 0; left: 0; } .top-right { top: 0; right: 0; text-align: right; }
         .bottom-left { bottom: 0; left: 0; } .bottom-right { bottom: 0; right: 0; text-align: right; }
-        
-        .label { opacity: 0.4; font-size: 7px; margin-bottom: 4px; }
-        .val { opacity: 0.9; font-variant-numeric: tabular-nums; }
-        
+        .label { opacity: 0.4; font-size: 7px; margin-bottom: 4px; } .val { opacity: 0.9; font-variant-numeric: tabular-nums; }
         #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 20000; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #fff; }
         #bar-frame { width: 240px; height: 1px; background: rgba(255,255,255,0.1); margin-top: 28px; }
         #bar-fill { width: 0%; height: 100%; background: #ffffff; transition: width 0.1s; }
     </style>
 </head>
 <body>
+    <div id="color-overlay"></div> 
     <div id="interface">
-        <div class="hud-cluster top-left">
-            <div class="label" id="unit-count">0 UNITS_ACTIVE</div>
-            <div class="val">SYSTEM_LINK // CLEAR</div>
-        </div>
-
-        <div class="hud-cluster top-right">
-            <div class="label">Atmosphere</div>
-            <div class="val" id="fog-val">Cinematic_Haze</div>
-        </div>
-
-        <div class="hud-cluster bottom-left">
-            <div class="label">Coordinate_Matrix</div>
-            <div class="val" id="coord-val">0.00 // 0.00 // 0.00</div>
-        </div>
-
-        <div class="hud-cluster bottom-right">
-            <div class="label">Object_Manifest</div>
-            <div class="val" id="target-id">Scanning...</div>
-        </div>
+        <div class="hud-cluster top-left"><div class="label" id="unit-count">0 UNITS_ACTIVE</div><div class="val">TRAFFIC // LIVE</div></div>
+        <div class="hud-cluster top-right"><div class="label">Atmosphere</div><div class="val" id="fog-val">VOID_SYNC_ON</div></div>
+        <div class="hud-cluster bottom-left"><div class="label">Coordinate</div><div class="val" id="coord-val">0.00 // 0.00 // 0.00</div></div>
+        <div class="hud-cluster bottom-right"><div class="label">Target</div><div class="val" id="target-id">Scanning...</div></div>
     </div>
-
-    <div id="loading-overlay">
-        <div id="msg" style="letter-spacing: 12px; font-size: 10px; opacity: 0.5;">CLEAN_INTERFACE_BOOT</div>
-        <div id="bar-frame"><div id="bar-fill"></div></div>
-    </div>
+    <div id="loading-overlay"><div id="msg" style="letter-spacing: 12px; font-size: 10px; opacity: 0.5;">2GBX_NYC_ENVIRONMENT</div><div id="bar-frame"><div id="bar-fill"></div></div></div>
     <canvas id="renderCanvas"></canvas>
 
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
 
     <script>
+    /**
+     * MEDIA ASSET POOLS
+     * Add your file paths here. The script will distribute them 
+     * across all planes found in NYC_MEDIA.glb.
+     */
+    const MEDIA_ASSETS = {
+        videos: [
+            "media/expl_0001.mp4",
+            "media/MOSS_ROCK_0001.mp4",
+            "media/CLIP INTERIOR.mp4",
+            "media/CLIP_LAB.mp4"
+        ],
+        images: [
+            "media/SCREEN_00.png",
+            "media/SCREEN_02.png"
+        ],
+        colors: []
+    };
+
+    /**
+     * SPECIFIC OVERRIDES
+     * Use mesh names from Blender to target specific objects.
+     */
+    const MEDIA_OVERRIDES = {
+        "Hero_Screen": { type: "video", url: "media/MOSS_ROCK_0001.mp4", emissive: 20.0 }
+    };
+
     const AAA_CONFIG = {
-        camera: { fov: 0.95, height: 4.3, speed: 2.2, inertia: 0.08, angularSens: 300, pos: { x: 60, z: 150 } },
-        environment: {
-            ambientIntensity: 0.45,
-            fog: { 
-                enabled: true, 
-                color: "#080a0f", // Controls the color of the "far away" distance
-                emission: 0.012, 
-                near: 500, far: 800 
-            }
+        camera: { fov: 0.85, height: 4.0, speed: 2.2, inertia: 0.5, angularSens: 300, pos: { x: 60, z: 150 } },
+        atmosphere: {
+            color: "#000000",
+            fogDensity: 0.001,
+            fogNear: 600,
+            fogFar: 700,
+            ambientIntensity: 0.05
         },
-        colorGrading: { hue: 210, saturation: 15, value: 0.1 },
-        lighting: { moon: { color: "#ffffff", intensity: 4.0 }, shadows: { enabled: true, darkness: 0.7, size: 1024 } },
+
+        // NEW PARAMETER: MASTER MEDIA EMISSIVE INTENSITY
+        mediaIntensity: 5.0,
+
+        colorGrading: { hue: 210, saturation: 25, value: 0.1 },
+        lighting: { moon: { color: "#ffffff", intensity: 2.0 }, shadows: { enabled: true, darkness: 0.7, size: 1024 } },
         traffic: { density: 50, velocity: 0.035, bumperGap: 15.0, carSize: 1.0, laneWidth: 3.0 },
         materials: {
-            "NYC_sky.glb":          { isSky: true, emissiveColor: "#080a0f", emissive: 0.3 }, 
-            "NYC_TERRAIN.glb":      { roughness: 0.1, metallic: 0.8, emissive: 0.1 },
+            "NYC_TERRAIN.glb":      { roughness: 0.1, metallic: 0.1, emissive: 0.1 },
             "NYC_BLOCKS.glb":       { roughness: 0.4, metallic: 0.4, emissive: 4.5 },
-            "NYC_COLD-STORAGE.glb": { roughness: 0.5, metallic: 0.3, emissive: 3.5 },
+            "NYC_COLD-STORAGE.glb": { roughness: 0.5, metallic: 0.3, emissive: 1.5 },
             "NYC_railways.glb":     { roughness: 0.6, metallic: 0.7, emissive: 2.5 },
-            "NYC_SITE_BUILDING.glb":{ roughness: 0.3, metallic: 0.6, emissive: 4.0 },
+            "NYC_SITE_BUILDING.glb":{ roughness: 0.3, metallic: 0.6, emissive: 2.0 },
             "NYC_robot.glb":        { roughness: 0.2, metallic: 0.9, emissive: 6.0 }, 
             "NYC_street_props.glb": { roughness: 0.5, metallic: 0.2, emissive: 3.0 },
-            "NYC_HUDSON_YARD.glb":  { roughness: 0.4, metallic: 0.4, emissive: 4.0 },
+            "NYC_HUDSON_YARD.glb":  { roughness: 0.4, metallic: 0.4, emissive: 5.0 },
             "NYC_DSR.glb":          { roughness: 0.3, metallic: 0.7, emissive: 6.0 },
+            "NYC_MEDIA.glb":        { roughness: 0.0, metallic: 0.0, emissive: 10.0 },
             "NYC_HIGHLINE.glb":     { roughness: 0.4, metallic: 0.5, emissive: 3.5 }
         },
-        postProcess: { exposure: 1.2, contrast: 1.2, bloomWeight: 2.5, bloomThreshold: 0.4, hazeWeight: 1.6 }
+        postProcess: { exposure: 0.9, contrast: 1.5, bloomWeight: 1.8, bloomThreshold: 0.8, hazeWeight: 3.6 }
     };
 
     (function() {
@@ -100,23 +115,21 @@
         let cars = [], adjacency = {}, carTemplate = null;
 
         const start = async () => {
-            engine = new BABYLON.Engine(canvas, true, { powerPreference: "high-performance" });
+            engine = new BABYLON.Engine(canvas, true, { adaptToDeviceRatio: true });
             scene = new BABYLON.Scene(engine);
             
-            const atmosColor = BABYLON.Color3.FromHexString(AAA_CONFIG.environment.fog.color);
-            scene.clearColor = atmosColor.toColor4(1);
-
-            if (AAA_CONFIG.environment.fog.enabled) {
-                scene.fogMode = BABYLON.Scene.FOGMODE_EXP;
-                scene.fogColor = atmosColor;
-                scene.fogDensity = AAA_CONFIG.environment.fog.emission;
-            }
+            const syncColor = BABYLON.Color3.FromHexString(AAA_CONFIG.atmosphere.color);
+            scene.clearColor = syncColor.toColor4(1);
+            scene.fogMode = BABYLON.Scene.FOGMODE_EXP;
+            scene.fogColor = syncColor;
+            scene.fogDensity = AAA_CONFIG.atmosphere.fogDensity;
 
             const hemi = new BABYLON.HemisphericLight("GI", new BABYLON.Vector3(0, 1, 0), scene);
-            hemi.intensity = AAA_CONFIG.environment.ambientIntensity;
+            hemi.intensity = AAA_CONFIG.atmosphere.ambientIntensity;
 
             camera = new BABYLON.FreeCamera("HeroCam", new BABYLON.Vector3(AAA_CONFIG.camera.pos.x, AAA_CONFIG.camera.height, AAA_CONFIG.camera.pos.z), scene);
             camera.attachControl(canvas, true);
+            camera.rotation.y = Math.PI; 
             camera.angularSensibility = AAA_CONFIG.camera.angularSens;
             camera.inertia = AAA_CONFIG.camera.inertia;
             camera.speed = AAA_CONFIG.camera.speed;
@@ -127,14 +140,16 @@
             const csm = new BABYLON.CascadedShadowGenerator(AAA_CONFIG.lighting.shadows.size, sun);
 
             const manager = new BABYLON.AssetsManager(scene);
+
+            // Network Loading
             const networkTask = manager.addMeshTask("network", "", "./", "NYC_STREET_lines.glb");
             networkTask.onSuccess = (t) => {
                 t.loadedMeshes.forEach(m => {
                     m.computeWorldMatrix(true);
                     const pos = m.getVerticesData(BABYLON.VertexBuffer.PositionKind);
                     const ind = m.getIndices();
-                    const mat = m.getWorldMatrix();
                     if (pos && ind) {
+                        const mat = m.getWorldMatrix();
                         const worldV = [];
                         for (let i = 0; i < pos.length; i += 3) {
                             worldV.push(BABYLON.Vector3.TransformCoordinates(new BABYLON.Vector3(pos[i], pos[i+1], pos[i+2]), mat));
@@ -151,6 +166,7 @@
                 });
             };
 
+            // Car Template Loading
             const carTask = manager.addMeshTask("car", "", "./", "NYC_car.glb");
             carTask.onSuccess = (t) => {
                 carTemplate = new BABYLON.Mesh("carTemplate", scene);
@@ -158,26 +174,60 @@
                 carTemplate.setEnabled(false);
             };
 
+            // Dynamic Media Loading
+            const mediaTask = manager.addMeshTask("media", "", "./", "NYC_MEDIA.glb");
+            mediaTask.onSuccess = (t) => {
+                t.loadedMeshes.forEach((m, index) => {
+                    let settings;
+                    if (MEDIA_OVERRIDES[m.name]) {
+                        settings = MEDIA_OVERRIDES[m.name];
+                    } else {
+                        const typeChoice = index % 3; 
+                        if (typeChoice === 0 && MEDIA_ASSETS.videos.length > 0) {
+                            settings = { type: "video", url: MEDIA_ASSETS.videos[index % MEDIA_ASSETS.videos.length], emissive: 12.0 };
+                        } else if (typeChoice === 1 && MEDIA_ASSETS.images.length > 0) {
+                            settings = { type: "image", url: MEDIA_ASSETS.images[index % MEDIA_ASSETS.images.length], emissive: 8.0 };
+                        } else {
+                            settings = { type: "color", url: MEDIA_ASSETS.colors[index % MEDIA_ASSETS.colors.length], emissive: 15.0 };
+                        }
+                    }
+
+                    const mat = new BABYLON.PBRMaterial("mat_" + m.name, scene);
+                    mat.unlit = true; 
+                    mat.emissiveIntensity = settings.emissive * AAA_CONFIG.mediaIntensity;
+
+                    if (settings.type === "video") {
+                        const vTex = new BABYLON.VideoTexture("vid_" + m.name, settings.url, scene, true);
+                        vTex.video.muted = true; vTex.video.loop = true;
+                        mat.albedoTexture = vTex; mat.emissiveTexture = vTex;
+                        mat.emissiveColor = new BABYLON.Color3(1, 1, 1);
+                        window.addEventListener("click", () => vTex.video.play(), { once: true });
+                    } 
+                    else if (settings.type === "image") {
+                        const iTex = new BABYLON.Texture(settings.url, scene);
+                        mat.albedoTexture = iTex; mat.emissiveTexture = iTex;
+                        mat.emissiveColor = new BABYLON.Color3(1, 1, 1);
+                    } 
+                    else if (settings.type === "color") {
+                        const col = BABYLON.Color3.FromHexString(settings.url);
+                        mat.albedoColor = col; mat.emissiveColor = col;
+                    }
+                    m.material = mat;
+                });
+            };
+
+            // Standard Mesh Loading
             Object.keys(AAA_CONFIG.materials).forEach(file => {
+                if (file === "NYC_MEDIA.glb") return;
                 const t = manager.addMeshTask(file, "", "./", file);
                 t.onSuccess = (s) => {
                     s.loadedMeshes.forEach(m => {
-                        const cfg = AAA_CONFIG.materials[file];
-                        if (cfg.isSky) {
-                            m.infiniteDistance = true; 
-                            m.applyFog = false; 
-                            m.isPickable = false;
-                            if (m.material) {
-                                m.material.backFaceCulling = false; 
-                                m.material.disableLighting = true; 
-                                m.material.emissiveColor = BABYLON.Color3.FromHexString(cfg.emissiveColor);
-                                m.material.emissiveIntensity = cfg.emissive;
-                            }
-                            return; 
-                        }
-                        csm.addShadowCaster(m); m.receiveShadows = true;
+                        const cfg = AAA_CONFIG.materials[file] || {};
+                        csm.addShadowCaster(m);
+                        m.receiveShadows = true;
                         if (m.material) {
-                            m.material.roughness = cfg.roughness; m.material.metallic = cfg.metallic;
+                            m.material.roughness = cfg.roughness;
+                            m.material.metallic = cfg.metallic;
                             m.material.emissiveIntensity = cfg.emissive;
                         }
                     });
@@ -188,28 +238,18 @@
                 document.getElementById("loading-overlay").style.display = "none";
                 const pipe = new BABYLON.DefaultRenderingPipeline("p", true, scene, [camera]);
                 pipe.bloomEnabled = true;
-                pipe.bloomThreshold = AAA_CONFIG.postProcess.bloomThreshold;
                 pipe.bloomWeight = AAA_CONFIG.postProcess.bloomWeight;
-                pipe.bloomKernel = 128;
-
                 pipe.imageProcessingEnabled = true;
-                pipe.imageProcessing.toneMappingEnabled = true;
-                pipe.imageProcessing.toneMappingType = BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
                 pipe.imageProcessing.exposure = AAA_CONFIG.postProcess.exposure;
                 pipe.imageProcessing.contrast = AAA_CONFIG.postProcess.contrast;
-
-                const curve = new BABYLON.ColorCurves();
-                curve.midtonesHue = AAA_CONFIG.colorGrading.hue;
-                curve.midtonesSaturation = AAA_CONFIG.colorGrading.saturation;
-                curve.midtonesDensity = AAA_CONFIG.colorGrading.value;
-                pipe.imageProcessing.colorCurves = curve;
-                pipe.imageProcessing.colorCurvesEnabled = true;
 
                 engine.runRenderLoop(() => { 
                     camera.position.y = AAA_CONFIG.camera.height;
                     coordUI.innerText = `${camera.position.x.toFixed(2)} // ${camera.position.y.toFixed(2)} // ${camera.position.z.toFixed(2)}`;
-                    while(cars.length < AAA_CONFIG.traffic.density) spawnCar();
-                    updateTraffic();
+                    if(Object.keys(adjacency).length > 0) {
+                        while(cars.length < AAA_CONFIG.traffic.density) spawnCar();
+                        updateTraffic();
+                    }
                     unitUI.innerText = `${cars.length} UNITS_ACTIVE`;
                     const ray = scene.createPickingRay(canvas.width / 2, canvas.height / 2, BABYLON.Matrix.Identity(), camera);
                     const hit = scene.pickWithRay(ray);
@@ -225,8 +265,10 @@
             const keys = Object.keys(adjacency);
             const startK = keys[Math.floor(Math.random() * keys.length)];
             const car = carTemplate.clone("c");
-            car.setEnabled(true); car.scaling.setAll(AAA_CONFIG.traffic.carSize);
-            cars.push({ mesh: car, curr: startK, next: adjacency[startK].next[0], t: Math.random(), stuck: 0 });
+            car.setEnabled(true);
+            const nextK = adjacency[startK].next[0] || startK;
+            // Added 'stuck' counter to ensure movement resets if units overlap
+            cars.push({ mesh: car, curr: startK, next: nextK, t: Math.random(), stuck: 0 });
         }
 
         function updateTraffic() {
@@ -236,16 +278,29 @@
                 for(let j=0; j<cars.length; j++) {
                     if(i === j) continue;
                     if(BABYLON.Vector3.Distance(c.mesh.position, cars[j].mesh.position) < AAA_CONFIG.traffic.bumperGap) {
-                        const toOther = cars[j].mesh.position.subtract(c.mesh.position);
                         const myDir = adjacency[c.next].pos.subtract(adjacency[c.curr].pos).normalize();
-                        if(BABYLON.Vector3.Dot(toOther.normalize(), myDir) > 0.8) { blocked = true; break; }
+                        const toOther = cars[j].mesh.position.subtract(c.mesh.position).normalize();
+                        if(BABYLON.Vector3.Dot(toOther, myDir) > 0.8) { 
+                            blocked = true; 
+                            break; 
+                        }
                     }
                 }
-                if(!blocked) { c.t += AAA_CONFIG.traffic.velocity; }
+                
+                // If not blocked, progress. If stuck for too long, force slow progress to clear jams.
+                if(!blocked) {
+                    c.t += AAA_CONFIG.traffic.velocity;
+                    c.stuck = 0;
+                } else {
+                    c.stuck++;
+                    if (c.stuck > 100) c.t += AAA_CONFIG.traffic.velocity * 0.2; 
+                }
+
                 if (c.t >= 1.0) {
                     const opts = adjacency[c.next].next;
                     const ch = opts.filter(k => k !== c.curr);
-                    c.curr = c.next; c.next = ch.length > 0 ? ch[Math.floor(Math.random() * ch.length)] : opts[0];
+                    c.curr = c.next; 
+                    c.next = ch.length > 0 ? ch[Math.floor(Math.random() * ch.length)] : opts[0];
                     c.t = 0;
                 }
                 const p1 = adjacency[c.curr].pos, p2 = adjacency[c.next].pos;
