@@ -27,6 +27,13 @@
         .top-left { top: 0; left: 0; } .top-right { top: 0; right: 0; text-align: right; }
         .bottom-left { bottom: 0; left: 0; } .bottom-right { bottom: 0; right: 0; text-align: right; }
         .label { opacity: 0.4; font-size: 7px; margin-bottom: 4px; } .val { opacity: 0.9; font-variant-numeric: tabular-nums; }
+        
+        /* Camera Controls */
+        .camera-controls { position: absolute; left: 30px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 10px; pointer-events: auto; z-index: 15; }
+        .cam-btn { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 10px; font-family: 'Fragment Mono', monospace; font-size: 8px; cursor: pointer; text-align: left; transition: all 0.3s; width: 160px; }
+        .cam-btn:hover { background: rgba(255,255,255,0.1); border-color: #fff; }
+        .cam-btn.active { background: #fff; color: #000; }
+
         #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 20000; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #fff; }
         #bar-frame { width: 240px; height: 1px; background: rgba(255,255,255,0.1); margin-top: 28px; }
         #bar-fill { width: 0%; height: 100%; background: #ffffff; transition: width 0.1s; }
@@ -36,6 +43,12 @@
     <div id="color-overlay"></div> 
     <div id="interface">
         <div class="hud-cluster top-left"><div class="label" id="unit-count">0 UNITS_ACTIVE</div><div class="val">TRAFFIC // LIVE</div></div>
+        
+        <div class="camera-controls">
+            <button class="cam-btn active" id="btn-fps">FIRST PERSON VIEW</button>
+            <button class="cam-btn" id="btn-god">GOD'S EYE VIEW</button>
+        </div>
+
         <div class="hud-cluster top-right"><div class="label">Atmosphere</div><div class="val" id="fog-val">VOID_SYNC_ON</div></div>
         <div class="hud-cluster bottom-left"><div class="label">Coordinate</div><div class="val" id="coord-val">0.00 // 0.00 // 0.00</div></div>
         <div class="hud-cluster bottom-right"><div class="label">Target</div><div class="val" id="target-id">Scanning...</div></div>
@@ -47,11 +60,6 @@
     <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
 
     <script>
-    /**
-     * MEDIA ASSET POOLS
-     * Add your file paths here. The script will distribute them 
-     * across all planes found in NYC_MEDIA.glb.
-     */
     const MEDIA_ASSETS = {
         videos: [
             "media/expl_0001.mp4",
@@ -66,16 +74,13 @@
         colors: []
     };
 
-    /**
-     * SPECIFIC OVERRIDES
-     * Use mesh names from Blender to target specific objects.
-     */
     const MEDIA_OVERRIDES = {
         "Hero_Screen": { type: "video", url: "media/MOSS_ROCK_0001.mp4", emissive: 20.0 }
     };
 
     const AAA_CONFIG = {
         camera: { fov: 0.85, height: 4.0, speed: 2.2, inertia: 0.5, angularSens: 300, pos: { x: 60, z: 150 } },
+        godCamera: { alpha: -Math.PI/4, beta: Math.PI/3, radius: 400, fov: 0.4 },
         atmosphere: {
             color: "#000000",
             fogDensity: 0.001,
@@ -83,10 +88,7 @@
             fogFar: 700,
             ambientIntensity: 0.05
         },
-
-        // NEW PARAMETER: MASTER MEDIA EMISSIVE INTENSITY
         mediaIntensity: 5.0,
-
         colorGrading: { hue: 210, saturation: 25, value: 0.1 },
         lighting: { moon: { color: "#ffffff", intensity: 2.0 }, shadows: { enabled: true, darkness: 0.7, size: 1024 } },
         traffic: { density: 50, velocity: 0.035, bumperGap: 15.0, carSize: 1.0, laneWidth: 3.0 },
@@ -111,7 +113,8 @@
         const coordUI = document.getElementById("coord-val");
         const targetUI = document.getElementById("target-id");
         const unitUI = document.getElementById("unit-count");
-        let engine, scene, camera;
+        let engine, scene;
+        let activeCamera, fpsCamera, godCamera;
         let cars = [], adjacency = {}, carTemplate = null;
 
         const start = async () => {
@@ -127,13 +130,47 @@
             const hemi = new BABYLON.HemisphericLight("GI", new BABYLON.Vector3(0, 1, 0), scene);
             hemi.intensity = AAA_CONFIG.atmosphere.ambientIntensity;
 
-            camera = new BABYLON.FreeCamera("HeroCam", new BABYLON.Vector3(AAA_CONFIG.camera.pos.x, AAA_CONFIG.camera.height, AAA_CONFIG.camera.pos.z), scene);
-            camera.attachControl(canvas, true);
-            camera.rotation.y = Math.PI; 
-            camera.angularSensibility = AAA_CONFIG.camera.angularSens;
-            camera.inertia = AAA_CONFIG.camera.inertia;
-            camera.speed = AAA_CONFIG.camera.speed;
-            camera.keysUp = [87]; camera.keysDown = [83]; camera.keysLeft = [65]; camera.keysRight = [68];
+            // 1. Setup FPS Camera
+            fpsCamera = new BABYLON.FreeCamera("HeroCam", new BABYLON.Vector3(AAA_CONFIG.camera.pos.x, AAA_CONFIG.camera.height, AAA_CONFIG.camera.pos.z), scene);
+            fpsCamera.rotation.y = Math.PI; 
+            fpsCamera.angularSensibility = AAA_CONFIG.camera.angularSens;
+            fpsCamera.inertia = AAA_CONFIG.camera.inertia;
+            fpsCamera.speed = AAA_CONFIG.camera.speed;
+            fpsCamera.keysUp = [87]; fpsCamera.keysDown = [83]; fpsCamera.keysLeft = [65]; fpsCamera.keysRight = [68];
+
+            // 2. Setup God's Eye Camera (Orbital)
+            godCamera = new BABYLON.ArcRotateCamera("GodCam", AAA_CONFIG.godCamera.alpha, AAA_CONFIG.godCamera.beta, AAA_CONFIG.godCamera.radius, new BABYLON.Vector3(0, 0, 0), scene);
+            godCamera.lowerRadiusLimit = 10;
+            godCamera.upperRadiusLimit = 1000;
+            godCamera.fov = AAA_CONFIG.godCamera.fov;
+            godCamera.panningSensibility = 50; // Allow right-click/two-finger drag to fly around
+
+            // Initialize with FPS
+            activeCamera = fpsCamera;
+            scene.activeCamera = activeCamera;
+            activeCamera.attachControl(canvas, true);
+
+            // UI Switcher Logic
+            const btnFps = document.getElementById("btn-fps");
+            const btnGod = document.getElementById("btn-god");
+
+            const switchCamera = (toGod) => {
+                activeCamera.detachControl(canvas);
+                if (toGod) {
+                    activeCamera = godCamera;
+                    btnGod.classList.add("active");
+                    btnFps.classList.remove("active");
+                } else {
+                    activeCamera = fpsCamera;
+                    btnFps.classList.add("active");
+                    btnGod.classList.remove("active");
+                }
+                scene.activeCamera = activeCamera;
+                activeCamera.attachControl(canvas, true);
+            };
+
+            btnFps.onclick = () => switchCamera(false);
+            btnGod.onclick = () => switchCamera(true);
 
             const sun = new BABYLON.DirectionalLight("Sun", new BABYLON.Vector3(0.5, -1, 0.5), scene);
             sun.intensity = AAA_CONFIG.lighting.moon.intensity;
@@ -141,7 +178,6 @@
 
             const manager = new BABYLON.AssetsManager(scene);
 
-            // Network Loading
             const networkTask = manager.addMeshTask("network", "", "./", "NYC_STREET_lines.glb");
             networkTask.onSuccess = (t) => {
                 t.loadedMeshes.forEach(m => {
@@ -166,7 +202,6 @@
                 });
             };
 
-            // Car Template Loading
             const carTask = manager.addMeshTask("car", "", "./", "NYC_car.glb");
             carTask.onSuccess = (t) => {
                 carTemplate = new BABYLON.Mesh("carTemplate", scene);
@@ -174,7 +209,6 @@
                 carTemplate.setEnabled(false);
             };
 
-            // Dynamic Media Loading
             const mediaTask = manager.addMeshTask("media", "", "./", "NYC_MEDIA.glb");
             mediaTask.onSuccess = (t) => {
                 t.loadedMeshes.forEach((m, index) => {
@@ -191,11 +225,9 @@
                             settings = { type: "color", url: MEDIA_ASSETS.colors[index % MEDIA_ASSETS.colors.length], emissive: 15.0 };
                         }
                     }
-
                     const mat = new BABYLON.PBRMaterial("mat_" + m.name, scene);
                     mat.unlit = true; 
                     mat.emissiveIntensity = settings.emissive * AAA_CONFIG.mediaIntensity;
-
                     if (settings.type === "video") {
                         const vTex = new BABYLON.VideoTexture("vid_" + m.name, settings.url, scene, true);
                         vTex.video.muted = true; vTex.video.loop = true;
@@ -216,7 +248,6 @@
                 });
             };
 
-            // Standard Mesh Loading
             Object.keys(AAA_CONFIG.materials).forEach(file => {
                 if (file === "NYC_MEDIA.glb") return;
                 const t = manager.addMeshTask(file, "", "./", file);
@@ -236,7 +267,7 @@
 
             manager.onFinish = () => {
                 document.getElementById("loading-overlay").style.display = "none";
-                const pipe = new BABYLON.DefaultRenderingPipeline("p", true, scene, [camera]);
+                const pipe = new BABYLON.DefaultRenderingPipeline("p", true, scene, [fpsCamera, godCamera]);
                 pipe.bloomEnabled = true;
                 pipe.bloomWeight = AAA_CONFIG.postProcess.bloomWeight;
                 pipe.imageProcessingEnabled = true;
@@ -244,14 +275,16 @@
                 pipe.imageProcessing.contrast = AAA_CONFIG.postProcess.contrast;
 
                 engine.runRenderLoop(() => { 
-                    camera.position.y = AAA_CONFIG.camera.height;
-                    coordUI.innerText = `${camera.position.x.toFixed(2)} // ${camera.position.y.toFixed(2)} // ${camera.position.z.toFixed(2)}`;
+                    if (activeCamera === fpsCamera) {
+                        fpsCamera.position.y = AAA_CONFIG.camera.height;
+                    }
+                    coordUI.innerText = `${activeCamera.position.x.toFixed(2)} // ${activeCamera.position.y.toFixed(2)} // ${activeCamera.position.z.toFixed(2)}`;
                     if(Object.keys(adjacency).length > 0) {
                         while(cars.length < AAA_CONFIG.traffic.density) spawnCar();
                         updateTraffic();
                     }
                     unitUI.innerText = `${cars.length} UNITS_ACTIVE`;
-                    const ray = scene.createPickingRay(canvas.width / 2, canvas.height / 2, BABYLON.Matrix.Identity(), camera);
+                    const ray = scene.createPickingRay(canvas.width / 2, canvas.height / 2, BABYLON.Matrix.Identity(), activeCamera);
                     const hit = scene.pickWithRay(ray);
                     targetUI.innerText = (hit.hit && hit.pickedMesh) ? (hit.pickedMesh.name.split('_')[1] || hit.pickedMesh.name) : "Void_Null";
                     scene.render(); 
@@ -267,7 +300,6 @@
             const car = carTemplate.clone("c");
             car.setEnabled(true);
             const nextK = adjacency[startK].next[0] || startK;
-            // Added 'stuck' counter to ensure movement resets if units overlap
             cars.push({ mesh: car, curr: startK, next: nextK, t: Math.random(), stuck: 0 });
         }
 
@@ -280,22 +312,11 @@
                     if(BABYLON.Vector3.Distance(c.mesh.position, cars[j].mesh.position) < AAA_CONFIG.traffic.bumperGap) {
                         const myDir = adjacency[c.next].pos.subtract(adjacency[c.curr].pos).normalize();
                         const toOther = cars[j].mesh.position.subtract(c.mesh.position).normalize();
-                        if(BABYLON.Vector3.Dot(toOther, myDir) > 0.8) { 
-                            blocked = true; 
-                            break; 
-                        }
+                        if(BABYLON.Vector3.Dot(toOther, myDir) > 0.8) { blocked = true; break; }
                     }
                 }
-                
-                // If not blocked, progress. If stuck for too long, force slow progress to clear jams.
-                if(!blocked) {
-                    c.t += AAA_CONFIG.traffic.velocity;
-                    c.stuck = 0;
-                } else {
-                    c.stuck++;
-                    if (c.stuck > 100) c.t += AAA_CONFIG.traffic.velocity * 0.2; 
-                }
-
+                if(!blocked) { c.t += AAA_CONFIG.traffic.velocity; c.stuck = 0; }
+                else { c.stuck++; if (c.stuck > 100) c.t += AAA_CONFIG.traffic.velocity * 0.2; }
                 if (c.t >= 1.0) {
                     const opts = adjacency[c.next].next;
                     const ch = opts.filter(k => k !== c.curr);
